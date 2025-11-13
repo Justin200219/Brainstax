@@ -1,0 +1,64 @@
+tables:
+  - name: customers
+    source: bstax_sandbox_pd.fontys_source_data.customers
+    pk: [customer_id]
+    scd_type: "2"                  # track history of profile changes
+    incremental_hints: []          # no updated_at in schema -> full snapshot + change detect
+    pii_guess: [email, first_name, last_name, phone, address_line1, postal_code]
+    dq:
+      not_null: [customer_id, registration_date]
+      unique: [customer_id]
+      patterns:
+        email: { column: email, regex: '^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$' }
+
+  - name: products
+    source: bstax_sandbox_pd.fontys_source_data.products
+    pk: [product_id]
+    scd_type: "2"                  # keep price/cost history for margin analytics
+    incremental_hints: [last_updated, created_at]
+    pii_guess: []                  # none
+    dq:
+      not_null: [product_id, product_name, category_id, price]
+      unique: [product_id]
+      ranges:
+        price: { min: 0 }
+        cost:  { min: 0 }
+      booleans: [is_active]
+
+  - name: product_categories
+    source: bstax_sandbox_pd.fontys_source_data.product_categories
+    pk: [category_id]
+    scd_type: "2"                  # small table; track hierarchy changes over time
+    incremental_hints: []          # treat as full (tiny)
+    pii_guess: []
+    dq:
+      not_null: [category_id, category_name]
+      unique: [category_id]
+
+  - name: orders
+    source: bstax_sandbox_pd.fontys_source_data.orders
+    pk: [order_id]
+    scd_type: "fct"                # transactional fact
+    incremental_hints: [updated_at, created_at, order_date]
+    pii_guess: [shipping_address]  # mask/hash address
+    dq:
+      not_null: [order_id, customer_id, order_date, total_amount]
+      ranges:
+        total_amount:   { min: 0 }
+        discount_amount:{ min: 0 }
+        tax_amount:     { min: 0 }
+      enums:
+        order_status: [pending, processing, shipped, delivered, cancelled]
+
+  - name: order_items
+    source: bstax_sandbox_pd.fontys_source_data.order_items
+    pk: [order_item_id]            # present in schema; safest unique key
+    scd_type: "fct"
+    incremental_hints: [created_at]
+    pii_guess: []
+    dq:
+      not_null: [order_item_id, order_id, product_id, quantity, unit_price]
+      ranges:
+        quantity:   { min: 1 }
+        unit_price: { min: 0 }
+        line_total: { min: 0 }
